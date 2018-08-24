@@ -1,0 +1,4 @@
+model_config:
+ sequence_len: 50
+ latent_dim: 50
+ embeding_size: 10
