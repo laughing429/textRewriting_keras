@@ -91,10 +91,10 @@ class transformer(object):
                     self.states_value = [h, c]
 
             sorted_beam = sorted(curr_beam)
-            for best_prob, best_complete, best_sequence in sorted_beam[-1]:
-                if best_complete == True or len(best_sequence)-1 == self.max_sequence:
-                    result.append((best_sequence[1:], best_prob))
-                    sorted_beam.pop()
+            best_prob, best_complete, best_sequence = sorted_beam[-1]
+            if best_complete == True or len(best_sequence)-1 == self.max_sequence:
+                result.append((best_sequence[1:], best_prob))
+                sorted_beam.pop()
 
             if len(result) == 0: # achieve the target
                 break
@@ -147,5 +147,5 @@ def transform_chinese(text, model, max_sequence=10):
 
 
 if __name__ == '__main__':
-    res = transform_chinese('傻瓜脑子里总想着偷魔法 。', 'zh2zh_weight_667-0.42.hdf5')
-    print(res)
+    res = transformer('zh2zh_weight_667-0.42.hdf5', '傻瓜脑子里总想着偷魔法 。', 2, 10)
+    print(res.beam_search)
