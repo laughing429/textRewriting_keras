@@ -4,7 +4,7 @@
 # Author: Lyu 
 # Annotation: 转换这里有两种search方法，一种是greedy search，一种是beam search。
 
-# todo: 1.replace_unk 2.beam_search
+# todo: 1.replace_unk
 
 import os
 import pickle
@@ -12,7 +12,6 @@ from keras.models import Model
 import jieba
 import numpy as np
 import heapq
-
 
 class beam(object):
     def __init__(self, beam_size, init_beam=None):
@@ -50,8 +49,8 @@ class transformer(object):
             src_word_index = pickle.load(f)
             # src_index_word = {index:word for word, index in src_word_index.items()}
         with open(os.path.join(root, 'conf', 'tgt_index_word.pkl'), 'rb') as f:
-            tgt_index_word = pickle.load(f)
-            tgt_word_index = {word: index for index, word in tgt_index_word.items()}
+            self.tgt_index_word = pickle.load(f)
+            tgt_word_index = {word: index for index, word in self.tgt_index_word.items()}
 
         self.encoder_infer = Model.from_config(encoder_infer_config)
         self.decoder_infer = Model.from_config(decoder_infer_config)
@@ -70,7 +69,6 @@ class transformer(object):
         "when count == 1 ,beam search is equal to greedy search"
         pass
 
-    @property
     def beam_search(self):
         result = []
         pre_beam = beam(self.count)
@@ -79,28 +77,38 @@ class transformer(object):
         while True:
             curr_beam = beam(self.count)
             for pre_prob, complete, prefix in pre_beam:
+                decoder_input = np.zeros((1, 1))
+                decoder_input[0,0] = prefix[-1]
                 if complete:
                     curr_beam.add(pre_prob, True, prefix)
                 else:
-                    output_tokens, h, c = self.decoder_infer.predict([prefix]+self.states_value)
+                    output_tokens, h, c = self.decoder_infer.predict([decoder_input]+self.states_value)
                     for suffix, next_prob in enumerate(output_tokens[0, -1, :]):
                         if suffix == self.tgt_eos_index:
-                            curr_beam.add(pre_prob*next_prob, True, prefix)
+                            curr_beam.add(pre_prob*np.log(next_prob), True, prefix)
                         else:
-                            curr_beam.add(pre_prob*next_prob, False, prefix+[suffix])
+                            curr_beam.add(pre_prob*np.log(next_prob), False, prefix+[suffix])
                     self.states_value = [h, c]
 
             sorted_beam = sorted(curr_beam)
-            best_prob, best_complete, best_sequence = sorted_beam[-1]
-            if best_complete == True or len(best_sequence)-1 == self.max_sequence:
-                result.append((best_sequence[1:], best_prob))
-                sorted_beam.pop()
+            process = 0
+            while True:
+                best_prob, best_complete, best_sequence = sorted_beam[-1]
+                if best_complete == True or len(best_sequence)-1 == self.max_sequence:
+                    result.append((best_sequence[1:], best_prob))
+                    sorted_beam.pop()
+                process += 1
+                if process == self.count:
+                    break
 
-            if len(result) == 0: # achieve the target
+            if len(result) == self.count: # achieve the target
                 break
 
-            pre_beam = beam(self.count, curr_beam)
-        return result
+            pre_beam = beam(self.count, sorted_beam)
+
+        for sequence, score in result:
+            yield [self.tgt_index_word[i] for i in sequence], score
+
 
 def transform_chinese(text, model, max_sequence=10):
     root = os.path.dirname(__file__)
@@ -147,5 +155,10 @@ def transform_chinese(text, model, max_sequence=10):
 
 
 if __name__ == '__main__':
-    res = transformer('zh2zh_weight_667-0.42.hdf5', '傻瓜脑子里总想着偷魔法 。', 2, 10)
-    print(res.beam_search)
+    res = transformer(model='zh2zh_weight_667-0.42.hdf5',
+                      text='傻瓜脑子里总想着偷魔法。',
+                      count=2,
+                      max_sequence=10)
+    for i,s in res.beam_search():
+        print(i, s)
+
